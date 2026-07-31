@@ -5,6 +5,8 @@ import { PrismaClient } from '../generated/prisma/index.js';
 const MANYCHAT_API_KEY = process.env.MANYCHAT_API_KEY;
 const AI_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS) || 10_000;
 const AI_MAX_ATTEMPTS = Number(process.env.AI_MAX_ATTEMPTS) || 2;
+// Set DEBUG_CLASSIFY=1 to log each message and the model's raw reply.
+const DEBUG_CLASSIFY = process.env.DEBUG_CLASSIFY === '1';
 
 export const channels = ['ig', 'wp'];
 
@@ -197,6 +199,25 @@ function parseClassificationType(response) {
 export async function processSend(channel, subscriber, message) {
   const response = await classify(message);
   const type = parseClassificationType(response);
+
+  if (DEBUG_CLASSIFY) {
+    // JSON.stringify escapes non-ASCII, so mangled UTF-8 is visible here as
+    // Ù... instead of readable Arabic. Compare against codePoints:
+    // intact Arabic sits in U+0600-U+06FF.
+    const raw = response?.choices?.[0]?.message?.content ?? '';
+    console.log(
+      'classify:',
+      JSON.stringify({
+        message,
+        escaped: JSON.stringify(message),
+        length: message.length,
+        firstCodePoints: [...message].slice(0, 8).map((c) => c.codePointAt(0).toString(16)),
+        reply: String(raw).slice(0, 40),
+        type,
+      })
+    );
+  }
+
   const flowId = await findFlowByChannelAndType(channel, type);
 
   if (!flowId) {
