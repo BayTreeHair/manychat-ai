@@ -3,8 +3,11 @@
 
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
+// The newer "prisma-client" generator emits TypeScript, which needs a build
+// step or a TS-aware runtime. Vercel runs this on Node, so use the generator
+// that emits plain JavaScript instead.
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../generated/prisma"
 }
 

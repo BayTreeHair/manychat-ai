@@ -65,6 +65,8 @@ The prompt is built once per instance from the `Message` table (`content` → `t
 
 ## Notes
 
+- `prisma/schema.prisma` uses the `prisma-client-js` generator, not the newer `prisma-client`. The latter emits TypeScript, which Bun runs directly but Node cannot — on Vercel that surfaces as `ERR_MODULE_NOT_FOUND ... internal/class.ts`. Setting `generatedFileExtension` does not help; it renames the files without changing their contents.
+- `bun dev` loads `.env` automatically. Running the same entrypoint under plain `node` does not, and fails at connect time with `SASL: ... client password must be a string`. On Vercel the platform supplies the variables, so this only affects local Node runs.
 - Prisma, OpenRouter, and both caches are held on `globalThis` so they survive across warm invocations and are rebuilt on cold start.
 - Serverless scales out to many instances, each with its own Postgres pool. Point `DATABASE_URL` at a pooler (Supabase pgBouncer, Neon pooled endpoint, PgBouncer) or connections will exhaust under load.
 - Caches are per-instance and never invalidated. Editing `Message` or `MessageFlow` rows takes effect on the next cold start, not immediately — redeploy to force it.

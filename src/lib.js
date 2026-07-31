@@ -1,6 +1,6 @@
 import { OpenRouter } from '@openrouter/sdk';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 
 const MANYCHAT_API_KEY = process.env.MANYCHAT_API_KEY;
 const AI_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS) || 10_000;
