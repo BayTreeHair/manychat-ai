@@ -1,13 +1,13 @@
 # Baytree AI
 
-Classifies an inbound ManyChat message with an OpenRouter model, then triggers the ManyChat flow linked to that message type. Runs on Bun, locally and on Vercel's Bun runtime; processing happens inline inside the request.
+Classifies an inbound ManyChat message with an OpenRouter model, then triggers the ManyChat flow linked to that message type. Express app on Bun, locally and on Vercel's Bun runtime; processing happens inline inside the request.
 
 ## Layout
 
 | Path | Role |
 | --- | --- |
-| `index.js` | Entrypoint — `Bun.serve` and route table |
-| `src/handlers.js` | Request handlers: validation, response shaping |
+| `index.js` | Entrypoint — express app and routes |
+| `src/handlers.js` | Route handlers: validation, response shaping |
 | `src/lib.js` | Pipeline: Prisma, OpenRouter, ManyChat |
 
 ## Local development
@@ -54,6 +54,8 @@ Responds `200 { "status": "ok", "channel": "ig", "subscriberId": 123456789, "typ
 
 1. Set every variable above in Project Settings → Environment Variables.
 2. Deploy. `bun.lock` makes Vercel pick the Bun runtime, which uses root `index.js` as its entrypoint. `postinstall` runs `prisma generate`; no build step beyond that.
+
+Vercel's Bun runtime only supports Express — it statically scans the entrypoint for an `express` import. Keep that import and the app in `index.js`; moving them into a module breaks detection with `No entrypoint found which imports express`.
 
 If a slow model call plus a retry ever exceeds the function duration limit, lower `AI_TIMEOUT_MS` / `AI_MAX_ATTEMPTS` or raise the limit in Project Settings.
 
