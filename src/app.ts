@@ -1,7 +1,6 @@
 import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import axios from 'axios';
-import { GoogleGenAI } from '@google/genai';
 import { PgBoss } from 'pg-boss';
 import { OpenRouter } from '@openrouter/sdk';
 dotenv.config();
