@@ -172,6 +172,11 @@ app.get('/', (req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Server listening on http://localhost:${port}`);
-});
+
+if (!process.env.VERCEL) {
+  app.listen(port, () => {
+    console.log(`Server listening on http://localhost:${port}`);
+  });
+}
+
+export default app;

@@ -12,6 +12,7 @@ dotenv_1.default.config();
 const boss = new pg_boss_1.PgBoss(process.env.DATABASE_URL);
 const app = (0, express_1.default)();
 app.use(express_1.default.json({ limit: '16kb' }));
+const isServerless = process.env.VERCEL === '1';
 const MANYCHAT_API_KEY = process.env.MANYCHAT_API_KEY;
 const AI_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS) || 10000;
 const MAX_CONCURRENT_JOBS = Number(process.env.MAX_CONCURRENT_JOBS) || 10;
@@ -189,6 +190,10 @@ app.post('/send', async (req, res) => {
     if (!message || typeof message !== 'string') {
         return res.status(400).json({ error: 'JSON body must include a valid "message" string.' });
     }
+    if (isServerless) {
+        await processSendBackground(channel, subscriber, message);
+        return res.status(202).json({ status: 'accepted', channel, subscriberId: subscriber });
+    }
     try {
         await boss.send('classify-message', { channel, subscriberId: subscriber, message });
     }
@@ -208,7 +213,8 @@ process.on('unhandledRejection', (reason) => {
     console.error('Unhandled rejection:', reason);
 });
 const port = process.env.PORT || 3000;
-boss.start().then(async () => {
+async function startBackgroundWorker() {
+    await boss.start();
     console.log('PgBoss started, connecting to database and starting server...');
     await boss.createQueue('classify-message');
     boss.work('classify-message', { batchSize: MAX_CONCURRENT_JOBS }, async (jobs) => {
@@ -227,7 +233,11 @@ boss.start().then(async () => {
             process.exit(0);
         });
     });
-}).catch((error) => {
-    console.error('Failed to start PgBoss:', error);
-    process.exit(1);
-});
+}
+if (!isServerless) {
+    startBackgroundWorker().catch((error) => {
+        console.error('Failed to start PgBoss:', error);
+        process.exit(1);
+    });
+}
+exports.default = app;

@@ -10,6 +10,7 @@ const boss = new PgBoss(process.env.DATABASE_URL!);
 
 const app = express();
 app.use(express.json({ limit: '16kb' }));
+const isServerless = process.env.VERCEL === '1';
 
 const MANYCHAT_API_KEY = process.env.MANYCHAT_API_KEY;
 const AI_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS) || 10_000;
@@ -234,6 +235,10 @@ app.post('/send', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'JSON body must include a valid "message" string.' });
   }
 
+  if (isServerless) {
+    await processSendBackground(channel, subscriber, message);
+    return res.status(202).json({ status: 'accepted', channel, subscriberId: subscriber });
+  }
 
   try {
     await boss.send('classify-message', { channel, subscriberId: subscriber, message });
@@ -257,7 +262,9 @@ process.on('unhandledRejection', (reason) => {
 });
 
 const port = process.env.PORT || 3000;
-boss.start().then(async () => {
+
+async function startBackgroundWorker() {
+  await boss.start();
   console.log('PgBoss started, connecting to database and starting server...');
 
   await boss.createQueue('classify-message');
@@ -286,10 +293,15 @@ boss.start().then(async () => {
       process.exit(0);
     });
   });
+}
 
-}).catch((error) => {
-  console.error('Failed to start PgBoss:', error);
-  process.exit(1);
-});
+if (!isServerless) {
+  startBackgroundWorker().catch((error) => {
+    console.error('Failed to start PgBoss:', error);
+    process.exit(1);
+  });
+}
+
+export default app;
 
 
