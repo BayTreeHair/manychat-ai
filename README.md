@@ -23,11 +23,14 @@ Requires [Bun](https://bun.sh) 1.3+ and Postgres.
 | Variable | Purpose |
 | --- | --- |
 | `DATABASE_URL` | Postgres connection string. Use a **pooled** URL in production. |
-| `OPENROUTER_API_KEY` | OpenRouter API key |
-| `OPENROUTER_MODEL` | Model id, default `openai/gpt-oss-120b` |
+| `GOOGLE_API_KEY` | Google AI Studio key — the primary classifier |
+| `GEMINI_MODEL` | Model id, default `gemini-3.5-flash-lite` |
+| `OPENROUTER_API_KEY` | Optional fallback provider. Leave empty to disable the fallback. |
+| `OPENROUTER_MODEL` | Fallback model id, default `openai/gpt-oss-120b` |
 | `MANYCHAT_API_KEY` | ManyChat API key |
 | `AI_TIMEOUT_MS` | Per-attempt classification timeout, default `10000` |
 | `AI_MAX_ATTEMPTS` | Attempts when the model reports busy/rate-limited, default `2` |
+| `DEBUG_CLASSIFY` | Set to `1` to log each message, its code points, and the model's raw reply |
 | `PORT` | Port to bind, default `3000`. Vercel sets this itself. |
 
 ## Endpoints
@@ -62,6 +65,19 @@ If a slow model call plus a retry ever exceeds the function duration limit, lowe
 ## How classification works
 
 The prompt is built once per instance from the `Message` table (`content` → `type`) and cached in module scope, so warm invocations skip the query. The model replies with a single number; `0` means no category matched. The `channel` + `type` pair is then looked up in `MessageFlow` (also cached) to get the ManyChat `flowId`.
+
+Customers write Egyptian Arabic, in Arabic script or in Franco-Arabic/Arabizi (Latin letters with digits standing in for Arabic letters). The system prompt states this explicitly and includes the transliteration key — without it, the same question spelled two ways gets classified two different ways.
+
+Gemini handles every request. If it errors or hits its free-tier limit, the request falls back to OpenRouter so a customer message is never dropped. Measured on 14 Egyptian Arabic / Franco messages against the live categories:
+
+| Model | Correct | Notes |
+| --- | --- | --- |
+| `gemini-3.5-flash-lite` | 14/14 | free tier, ~0.5s |
+| `gemini-3.6-flash` | 14/14 | free tier, ~10x slower |
+| `openai/gpt-oss-120b` | 13/14 | paid, ~$0.00008/message |
+| `nvidia/nemotron-3-nano-30b-a3b:free` | 10/14 | unreliable on dialect; also unstable across runs |
+
+Model choice dominates accuracy here. The nano model returned three different answers for one message across runs, which is what "the AI is bad at Arabic" actually looked like.
 
 ## Notes
 

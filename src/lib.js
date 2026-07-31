@@ -5,6 +5,7 @@ import { PrismaClient } from '../generated/prisma/index.js';
 const MANYCHAT_API_KEY = process.env.MANYCHAT_API_KEY;
 const AI_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS) || 10_000;
 const AI_MAX_ATTEMPTS = Number(process.env.AI_MAX_ATTEMPTS) || 2;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 // Set DEBUG_CLASSIFY=1 to log each message and the model's raw reply.
 const DEBUG_CLASSIFY = process.env.DEBUG_CLASSIFY === '1';
 
@@ -141,43 +142,80 @@ function isAIBusyError(error) {
   );
 }
 
+// Both providers take the same system prompt and customer message and return
+// the model's raw reply as a string. The customer message goes in the user
+// turn, never concatenated into the system prompt, so instructions stay
+// separable from customer text.
+async function callGemini(system, message) {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+    {
+      method: 'POST',
+      headers: {
+        'x-goog-api-key': process.env.GOOGLE_API_KEY || '',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: 'user', parts: [{ text: message }] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 2000 },
+      }),
+      signal: AbortSignal.timeout(AI_TIMEOUT_MS),
+    }
+  );
+
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(`Gemini ${response.status}: ${body?.error?.message ?? 'unknown error'}`);
+  }
+
+  return body.candidates?.[0]?.content?.parts?.map((part) => part.text).join('') ?? '';
+}
+
+async function callOpenRouter(system, message) {
+  const result = await ai.chat.send(
+    {
+      chatRequest: {
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: message },
+        ],
+        temperature: 0,
+        model: process.env.OPENROUTER_MODEL || 'openai/gpt-oss-120b',
+      },
+    },
+    { timeoutMs: AI_TIMEOUT_MS }
+  );
+
+  return result?.choices?.[0]?.message?.content ?? '';
+}
+
 async function classify(message) {
   const system = await ensurePrompt();
 
-  // The customer message goes in the user turn, not concatenated into the
-  // system prompt, so instructions stay separable from customer text.
-  const send = () =>
-    ai.chat.send(
-      {
-        chatRequest: {
-          messages: [
-            { role: 'system', content: system },
-            { role: 'user', content: message },
-          ],
-          temperature: 0,
-          model: process.env.OPENROUTER_MODEL || 'openai/gpt-oss-120b',
-        },
-      },
-      { timeoutMs: AI_TIMEOUT_MS }
-    );
-
   for (let attempt = 1; attempt <= AI_MAX_ATTEMPTS; attempt += 1) {
     try {
-      return await send();
+      return await callGemini(system, message);
     } catch (error) {
       if (attempt < AI_MAX_ATTEMPTS && isAIBusyError(error)) {
-        console.warn(`AI is busy on attempt ${attempt}, retrying in 2s...`, error?.message || error);
+        console.warn(`Gemini busy on attempt ${attempt}, retrying in 2s...`, error?.message || error);
         await sleep(2000);
         continue;
       }
+
+      // Gemini's free tier has per-minute and per-day caps. Rather than drop
+      // the customer's message when it runs out, fall back to OpenRouter.
+      if (process.env.OPENROUTER_API_KEY) {
+        console.warn('Gemini failed, falling back to OpenRouter:', error?.message || error);
+        return await callOpenRouter(system, message);
+      }
+
       throw error;
     }
   }
 }
 
-function parseClassificationType(response) {
-  const text = response?.choices?.[0]?.message?.content || '';
-
+function parseClassificationType(text) {
   // Normalise Arabic-Indic digits, then take the first number anywhere in the
   // reply — anchoring to the start turned any prefixed word into a silent 0.
   const normalised = String(text)
@@ -197,22 +235,20 @@ function parseClassificationType(response) {
 // Full pipeline for one message
 // ---------------------------------------------------------------------------
 export async function processSend(channel, subscriber, message) {
-  const response = await classify(message);
-  const type = parseClassificationType(response);
+  const reply = await classify(message);
+  const type = parseClassificationType(reply);
 
   if (DEBUG_CLASSIFY) {
     // JSON.stringify escapes non-ASCII, so mangled UTF-8 is visible here as
     // Ù... instead of readable Arabic. Compare against codePoints:
     // intact Arabic sits in U+0600-U+06FF.
-    const raw = response?.choices?.[0]?.message?.content ?? '';
     console.log(
       'classify:',
       JSON.stringify({
         message,
-        escaped: JSON.stringify(message),
         length: message.length,
         firstCodePoints: [...message].slice(0, 8).map((c) => c.codePointAt(0).toString(16)),
-        reply: String(raw).slice(0, 40),
+        reply: String(reply).slice(0, 40),
         type,
       })
     );
