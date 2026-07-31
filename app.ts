@@ -7,6 +7,7 @@ dotenv.config();
 
 const app = express();
 app.use(express.json());
+const isServerless = process.env.VERCEL === '1';
 
 const GEMINI_API_KEY = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-mini';
@@ -158,6 +159,11 @@ app.post('/send', async (req, res) => {
 
   if (!message || typeof message !== 'string') {
     return res.status(400).json({ error: 'JSON body must include a valid "message" string.' });
+  }
+
+  if (isServerless) {
+    await processSendBackground(channel, subscriber, message);
+    return res.status(202).json({ status: 'accepted', channel, subscriberId: subscriber });
   }
 
   setImmediate(() => {

@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node dist/app.js",
     "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
-    "build": "tsc"
+    "build": "prisma generate && tsc",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
