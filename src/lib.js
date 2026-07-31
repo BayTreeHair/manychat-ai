@@ -87,14 +87,29 @@ async function loadPrompt() {
     throw new Error('No classification messages found in the database.');
   }
 
-  let prompt = `Classify the message into one of the following types. If none match, respond with 0. Respond with only the number.\n\n`;
-  prompt += `0: Does not clearly match any category\n`;
+  let categories = `0: Does not clearly match any category\n`;
   for (const message of dbMessages) {
-    prompt += `${message.type ?? 0}: ${message.content}\n`;
+    categories += `${message.type ?? 0}: ${message.content}\n`;
   }
 
-  cache.prompt = prompt;
-  return prompt;
+  // Customers write Egyptian Arabic, often in Franco-Arabic (Latin letters plus
+  // digits standing in for Arabic letters). Without the transliteration key the
+  // model classifies the Franco spelling of a message differently from the same
+  // message in Arabic script.
+  cache.prompt = `You classify incoming customer messages for a hair-extension business into exactly one category.
+
+The customer writes in Egyptian Arabic. The message may be in Arabic script, in Franco-Arabic/Arabizi (Arabic typed with Latin letters and digits), or a mix of Arabic and English. In Franco-Arabic, digits stand for Arabic letters: 2=ء, 3=ع, 5=خ, 6=ط, 7=ح, 8=غ, 9=ق. Read Franco-Arabic as fluently as Arabic script — "momken asbgho?" means "ممكن اصبغه؟". Never let the writing system change which category you pick.
+
+Categories:
+${categories}
+Rules:
+- Answer with the category number only. No words, no punctuation, no explanation.
+- Use Western digits (0-9).
+- If the message raises several topics, pick the category for the customer's main question. A passing mention of price or stock does not by itself force 0 when another category clearly fits.
+- If two categories overlap, pick the more specific one.
+- Use 0 only when no category genuinely fits, or the message is a greeting, a price question, or a stock question.`;
+
+  return cache.prompt;
 }
 
 function ensurePrompt() {
@@ -125,14 +140,19 @@ function isAIBusyError(error) {
 }
 
 async function classify(message) {
-  const prefix = await ensurePrompt();
-  const prompt = prefix + `\nMessage: "${message.replace(/"/g, '\\"')}"\nOutput:`;
+  const system = await ensurePrompt();
 
+  // The customer message goes in the user turn, not concatenated into the
+  // system prompt, so instructions stay separable from customer text.
   const send = () =>
     ai.chat.send(
       {
         chatRequest: {
-          messages: [{ role: 'system', content: prompt }],
+          messages: [
+            { role: 'system', content: system },
+            { role: 'user', content: message },
+          ],
+          temperature: 0,
           model: process.env.OPENROUTER_MODEL || 'openai/gpt-oss-120b',
         },
       },
@@ -155,8 +175,20 @@ async function classify(message) {
 
 function parseClassificationType(response) {
   const text = response?.choices?.[0]?.message?.content || '';
-  const typeMatch = String(text).trim().match(/^[0-9]+/);
-  return typeMatch ? Number(typeMatch[0]) : 0;
+
+  // Normalise Arabic-Indic digits, then take the first number anywhere in the
+  // reply — anchoring to the start turned any prefixed word into a silent 0.
+  const normalised = String(text)
+    .trim()
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0));
+
+  const typeMatch = normalised.match(/[0-9]+/);
+  if (!typeMatch) {
+    console.warn('Could not parse a category from model reply:', normalised.slice(0, 120));
+    return 0;
+  }
+  return Number(typeMatch[0]);
 }
 
 // ---------------------------------------------------------------------------
