@@ -1,31 +1,20 @@
 {
   "name": "baytree-ai",
   "version": "1.0.0",
-  "description": "Express app that classifies message type using Gemini API.",
-  "main": "dist/app.js",
+  "description": "Bun server that classifies ManyChat messages and triggers the matching flow.",
+  "type": "module",
+  "module": "src/app.js",
   "scripts": {
-    "start": "node dist/app.js",
-    "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
-    "build": "prisma generate && tsc",
+    "start": "bun run src/dev.js",
+    "dev": "bun --watch src/dev.js",
     "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
     "@openrouter/sdk": "^0.12.35",
     "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
-    "axios": "^1.6.0",
-    "express": "^4.18.2",
-    "pg-boss": "^12.18.2"
+    "@prisma/client": "^7.8.0"
   },
   "devDependencies": {
-    "@types/axios": "^0.14.4",
-    "@types/dotenv": "^8.2.3",
-    "@types/express": "^5.0.6",
-    "@types/node": "^25.9.1",
-    "dotenv": "^16.3.1",
-    "prisma": "^7.8.0",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^6.0.3"
+    "prisma": "^7.8.0"
   }
 }
