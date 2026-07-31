@@ -1,16 +1,14 @@
 # Baytree AI
 
-Classifies an inbound ManyChat message with an OpenRouter model, then triggers the ManyChat flow linked to that message type. Deploys as Vercel Functions; processing happens inline inside the request.
+Classifies an inbound ManyChat message with an OpenRouter model, then triggers the ManyChat flow linked to that message type. Runs on Bun, locally and on Vercel's Bun runtime; processing happens inline inside the request.
 
 ## Layout
 
 | Path | Role |
 | --- | --- |
-| `api/send.js` | `POST` handler — validates, classifies, sends the flow |
-| `api/health.js` | `GET` health probe |
-| `api/index.js` | `GET /` — empty 200 |
-| `src/lib.js` | Shared pipeline: Prisma, OpenRouter, ManyChat |
-| `src/dev.js` | Local Bun server mounting the same handlers |
+| `index.js` | Entrypoint — `Bun.serve` and route table |
+| `src/handlers.js` | Request handlers: validation, response shaping |
+| `src/lib.js` | Pipeline: Prisma, OpenRouter, ManyChat |
 
 ## Local development
 
@@ -30,11 +28,9 @@ Requires [Bun](https://bun.sh) 1.3+ and Postgres.
 | `MANYCHAT_API_KEY` | ManyChat API key |
 | `AI_TIMEOUT_MS` | Per-attempt classification timeout, default `10000` |
 | `AI_MAX_ATTEMPTS` | Attempts when the model reports busy/rate-limited, default `2` |
-| `PORT` | Local dev port, default `3000`. Unused on Vercel. |
+| `PORT` | Port to bind, default `3000`. Vercel sets this itself. |
 
 ## Endpoints
-
-`vercel.json` rewrites `/send` and `/health` onto the `api/` functions, so both the short and `/api/...` forms work.
 
 - `GET /` — empty 200
 - `GET /health` — `{ "status": "ok", "uptime": <seconds> }`
@@ -57,9 +53,9 @@ Responds `200 { "status": "ok", "channel": "ig", "subscriberId": 123456789, "typ
 ## Deploying to Vercel
 
 1. Set every variable above in Project Settings → Environment Variables.
-2. Deploy. `postinstall` runs `prisma generate`; no build step beyond that.
+2. Deploy. `bun.lock` makes Vercel pick the Bun runtime, which uses root `index.js` as its entrypoint. `postinstall` runs `prisma generate`; no build step beyond that.
 
-`api/send.js` is configured for `maxDuration: 60`. Hobby plans cap at 60s; the default without this is 10s, which one slow model call plus a retry can exceed.
+If a slow model call plus a retry ever exceeds the function duration limit, lower `AI_TIMEOUT_MS` / `AI_MAX_ATTEMPTS` or raise the limit in Project Settings.
 
 ## How classification works
 

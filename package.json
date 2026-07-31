@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "description": "Bun server that classifies ManyChat messages and triggers the matching flow.",
   "type": "module",
-  "module": "src/app.js",
+  "module": "index.js",
   "scripts": {
-    "start": "bun run src/dev.js",
-    "dev": "bun --watch src/dev.js",
+    "start": "bun run index.js",
+    "dev": "bun --watch index.js",
     "postinstall": "prisma generate"
   },
   "dependencies": {

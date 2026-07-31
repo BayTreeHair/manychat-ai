@@ -1,6 +1,14 @@
-import { channels, processSend } from '../src/lib.js';
+import { channels, processSend } from './lib.js';
 
-export async function POST(request) {
+export function getRoot() {
+  return new Response('');
+}
+
+export function getHealth() {
+  return Response.json({ status: 'ok', uptime: process.uptime() });
+}
+
+export async function postSend(request) {
   let body;
   try {
     body = await request.json();
